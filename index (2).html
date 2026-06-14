@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>在庫管理</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #f5f5f5; color: #1a1a1a; }
+.app { max-width: 680px; margin: 0 auto; padding: 12px; }
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.header h1 { font-size: 18px; font-weight: 700; }
+#sync-status { font-size: 11px; color: #888; }
+.tabs { display: flex; gap: 4px; background: #e8e8e8; padding: 4px; border-radius: 10px; margin-bottom: 16px; }
+.tab { flex: 1; padding: 8px 4px; text-align: center; font-size: 12px; border-radius: 7px; cursor: pointer; border: none; background: transparent; color: #666; font-family: inherit; transition: all 0.15s; }
+.tab.active { background: #fff; color: #1a1a1a; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.stock-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 16px; }
+.stock-card { background: #fff; border-radius: 10px; padding: 12px 8px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+.stock-card .name { font-size: 11px; color: #888; margin-bottom: 4px; }
+.stock-card .count { font-size: 26px; font-weight: 700; color: #1a1a1a; }
+.stock-card .unit { font-size: 11px; color: #aaa; }
+.stock-card.low .count { color: #E24B4A; }
+.section-title { font-size: 13px; font-weight: 700; color: #888; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.form-card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+.form-row { margin-bottom: 12px; }
+.form-row label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; font-weight: 600; }
+.form-row input, .form-row select { width: 100%; padding: 10px 12px; font-size: 15px; border: 1.5px solid #e8e8e8; border-radius: 8px; background: #fff; color: #1a1a1a; font-family: inherit; -webkit-appearance: none; }
+.form-row input:focus, .form-row select:focus { outline: none; border-color: #1a1a1a; }
+.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn { width: 100%; padding: 13px; border: none; border-radius: 9px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; transition: opacity 0.15s; }
+.btn:active { opacity: 0.75; }
+.btn-dark { background: #1a1a1a; color: #fff; }
+.btn-green { background: #1D9E75; color: #fff; }
+.history-list { display: flex; flex-direction: column; gap: 8px; }
+.history-item { background: #fff; border-radius: 10px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: flex-start; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+.history-item .left .name { font-size: 14px; font-weight: 700; }
+.history-item .left .sub { font-size: 12px; color: #888; margin-top: 3px; }
+.history-item .right { text-align: right; flex-shrink: 0; margin-left: 12px; }
+.history-item .right .qty { font-size: 16px; font-weight: 700; }
+.qty.out { color: #E24B4A; }
+.qty.in { color: #1D9E75; }
+.history-item .right .date { font-size: 11px; color: #aaa; margin-top: 2px; }
+.badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 20px; margin-left: 4px; }
+.badge-out { background: #FCEBEB; color: #A32D2D; }
+.badge-in { background: #EAF3DE; color: #3B6D11; }
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; display: none; z-index: 500; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+.empty-msg { text-align: center; color: #aaa; font-size: 13px; padding: 32px; }
+.filter-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.filter-row select { flex: 1; padding: 9px 10px; font-size: 13px; border: 1.5px solid #e8e8e8; border-radius: 8px; background: #fff; color: #1a1a1a; font-family: inherit; -webkit-appearance: none; }
+.action-row { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 10px; }
+.btn-sm { padding: 8px 14px; font-size: 13px; font-weight: 700; border: none; border-radius: 7px; cursor: pointer; font-family: inherit; }
+.btn-excel { background: #217346; color: #fff; }
+.btn-qr { background: #5856D6; color: #fff; }
+.autofill-notice { background: #EEF4FF; border-radius: 8px; padding: 9px 12px; font-size: 12px; color: #3366CC; margin-bottom: 12px; font-weight: 600; display: none; }
+
+/* QRモーダル */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 400; display: none; align-items: center; justify-content: center; padding: 16px; }
+.modal-overlay.open { display: flex; }
+.modal { background: #fff; border-radius: 16px; padding: 20px; width: 100%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.modal-header h2 { font-size: 16px; font-weight: 700; }
+.modal-close { background: #f0f0f0; border: none; border-radius: 50%; width: 30px; height: 30px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.modal-sub { font-size: 12px; color: #888; margin-bottom: 14px; }
+.qr-section-title { font-size: 12px; font-weight: 700; color: #888; margin: 14px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; border-top: 1px solid #f0f0f0; padding-top: 14px; }
+.qr-section-title:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+.qr-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.qr-item { border: 1.5px solid #eee; border-radius: 10px; padding: 10px 8px; text-align: center; width: 108px; }
+.qr-item .qr-loc { font-size: 12px; font-weight: 700; color: #1a1a1a; margin-bottom: 6px; }
+.qr-box { display: flex; justify-content: center; }
+.qr-box canvas, .qr-box img { width: 88px !important; height: 88px !important; }
+.print-btn { background: #1a1a1a; color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
+
+@media print {
+  body * { visibility: hidden; }
+  .modal-overlay, .modal-overlay * { visibility: visible; }
+  .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: auto; background: none; padding: 0; display: block !important; }
+  .modal { max-height: none; box-shadow: none; border-radius: 0; }
+  .modal-close, .print-btn, .btn-sm { display: none !important; }
+  .qr-row { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>🔋 在庫管理</h1>
+    <span id="sync-status"></span>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('stock')">📊 在庫</button>
+    <button class="tab" onclick="switchTab('sell')">➖ 販売</button>
+    <button class="tab" onclick="switchTab('receive')">➕ 入庫</button>
+    <button class="tab" onclick="switchTab('history')">📋 履歴</button>
+  </div>
+
+  <!-- 在庫 -->
+  <div id="tab-stock">
+    <p class="section-title">現在の在庫数</p>
+    <div class="stock-grid" id="stock-grid"></div>
+    <div class="action-row" style="justify-content:flex-start;margin-top:4px;">
+      <button class="btn-sm btn-qr" onclick="openQRModal()">📱 QRコード一覧</button>
+    </div>
+  </div>
+
+  <!-- 販売 -->
+  <div id="tab-sell" style="display:none;">
+    <div class="form-card">
+      <p class="section-title" style="margin-bottom:12px;">販売記録</p>
+      <div class="autofill-notice" id="autofill-notice">📱 QRコードから自動入力されました</div>
+      <div class="form-row">
+        <label>商品 *</label>
+        <select id="sell-product">
+          <option value="">選択してください</option>
+          <option>PR41</option><option>PR48</option><option>PR536</option><option>乾燥剤</option>
+        </select>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row" style="margin-bottom:0">
+          <label>数量 *</label>
+          <input type="number" id="sell-qty" min="1" value="1" inputmode="numeric">
+        </div>
+        <div class="form-row" style="margin-bottom:0">
+          <label>販売日 *</label>
+          <input type="date" id="sell-date">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:12px;">
+        <label>病院 *</label>
+        <select id="sell-location">
+          <option value="">選択してください</option>
+          <option>あかいけ</option><option>かおる</option><option>元八事</option>
+          <option>淑徳</option><option>相談会</option><option>自宅</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>患者名 *</label>
+        <input type="text" id="sell-patient" placeholder="例：山田 太郎">
+      </div>
+      <button class="btn btn-dark" onclick="recordSell()">販売を記録する</button>
+    </div>
+  </div>
+
+  <!-- 入庫 -->
+  <div id="tab-receive" style="display:none;">
+    <div class="form-card">
+      <p class="section-title" style="margin-bottom:12px;">入庫記録</p>
+      <div class="form-row">
+        <label>商品 *</label>
+        <select id="receive-product">
+          <option value="">選択してください</option>
+          <option>PR41</option><option>PR48</option><option>PR536</option><option>乾燥剤</option>
+        </select>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row" style="margin-bottom:0">
+          <label>数量 *</label>
+          <input type="number" id="receive-qty" min="1" value="1" inputmode="numeric">
+        </div>
+        <div class="form-row" style="margin-bottom:0">
+          <label>入庫日 *</label>
+          <input type="date" id="receive-date">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:12px;">
+        <label>メモ（任意）</label>
+        <input type="text" id="receive-note" placeholder="例：本社から補充">
+      </div>
+      <button class="btn btn-green" onclick="recordReceive()">入庫を記録する</button>
+    </div>
+  </div>
+
+  <!-- 履歴 -->
+  <div id="tab-history" style="display:none;">
+    <div class="filter-row">
+      <select id="filter-type" onchange="renderHistory()">
+        <option value="">すべて</option>
+        <option value="out">販売のみ</option>
+        <option value="in">入庫のみ</option>
+      </select>
+      <select id="filter-product" onchange="renderHistory()">
+        <option value="">全商品</option>
+        <option>PR41</option><option>PR48</option><option>PR536</option><option>乾燥剤</option>
+      </select>
+    </div>
+    <div class="action-row">
+      <button class="btn-sm btn-excel" onclick="exportExcel()">📥 Excel出力</button>
+    </div>
+    <div class="history-list" id="history-list"></div>
+  </div>
+</div>
+
+<!-- QRモーダル -->
+<div class="modal-overlay" id="qr-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>📱 QRコード一覧</h2>
+      <button class="modal-close" onclick="closeQRModal()">✕</button>
+    </div>
+    <p class="modal-sub">読み取ると商品・病院が自動入力されます。患者名と枚数だけ入力してください。</p>
+    <div style="margin-bottom:14px;">
+      <button class="print-btn" onclick="window.print()">🖨️ 印刷する</button>
+    </div>
+    <div id="qr-grid"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const PRODUCTS  = ['PR41','PR48','PR536','乾燥剤'];
+const LOCATIONS = ['あかいけ','かおる','元八事','淑徳','相談会','自宅'];
+const STORE_KEY = 'inv_v2';
+
+let data = { stock: {PR41:0,PR48:0,PR536:0,'乾燥剤':0}, history: [] };
+
+// ── データ保存・読込 ──
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){}
+  document.getElementById('sync-status').textContent = '保存済み ' + new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) data = JSON.parse(raw);
+  } catch(e){}
+  renderStock(); renderHistory();
+  document.getElementById('sync-status').textContent = '読み込み完了';
+}
+
+// ── 描画 ──
+function renderStock() {
+  document.getElementById('stock-grid').innerHTML = PRODUCTS.map(p => {
+    const n = data.stock[p] || 0;
+    return `<div class="stock-card${n<=2?' low':''}">
+      <div class="name">${p}</div>
+      <div class="count">${n}</div>
+      <div class="unit">個</div>
+    </div>`;
+  }).join('');
+}
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  const tf = document.getElementById('filter-type').value;
+  const pf = document.getElementById('filter-product').value;
+  let items = [...data.history].reverse();
+  if (tf) items = items.filter(i => i.type === tf);
+  if (pf) items = items.filter(i => i.product === pf);
+  if (!items.length) { list.innerHTML = '<div class="empty-msg">記録がありません</div>'; return; }
+  list.innerHTML = items.map(i => {
+    const out = i.type === 'out';
+    return `<div class="history-item">
+      <div class="left">
+        <div class="name">${i.product}<span class="badge ${out?'badge-out':'badge-in'}">${out?'販売':'入庫'}</span></div>
+        <div class="sub">${out ? i.location+'　'+i.patient : (i.note||'')}</div>
+      </div>
+      <div class="right">
+        <div class="qty ${out?'out':'in'}">${out?'-':'+'}${i.qty}</div>
+        <div class="date">${i.date}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._t); t._t = setTimeout(()=>t.style.display='none', 2400);
+}
+
+// ── 販売・入庫 ──
+function recordSell() {
+  const product  = document.getElementById('sell-product').value;
+  const qty      = parseInt(document.getElementById('sell-qty').value) || 0;
+  const date     = document.getElementById('sell-date').value;
+  const location = document.getElementById('sell-location').value;
+  const patient  = document.getElementById('sell-patient').value.trim();
+  if (!product)  { showToast('商品を選択してください'); return; }
+  if (qty < 1)   { showToast('数量を入力してください'); return; }
+  if (!date)     { showToast('販売日を入力してください'); return; }
+  if (!location) { showToast('病院を選択してください'); return; }
+  if (!patient)  { showToast('患者名を入力してください'); return; }
+  if ((data.stock[product]||0) < qty) { showToast('在庫が不足しています'); return; }
+  data.stock[product] = (data.stock[product]||0) - qty;
+  data.history.push({ type:'out', product, qty, date, location, patient, id: Date.now() });
+  save(); renderStock(); renderHistory();
+  showToast(`✅ ${product} ${qty}個 記録しました`);
+  document.getElementById('sell-product').value   = '';
+  document.getElementById('sell-qty').value       = '1';
+  document.getElementById('sell-location').value  = '';
+  document.getElementById('sell-patient').value   = '';
+  document.getElementById('autofill-notice').style.display = 'none';
+}
+function recordReceive() {
+  const product = document.getElementById('receive-product').value;
+  const qty     = parseInt(document.getElementById('receive-qty').value) || 0;
+  const date    = document.getElementById('receive-date').value;
+  const note    = document.getElementById('receive-note').value.trim();
+  if (!product) { showToast('商品を選択してください'); return; }
+  if (qty < 1)  { showToast('数量を入力してください'); return; }
+  if (!date)    { showToast('入庫日を入力してください'); return; }
+  data.stock[product] = (data.stock[product]||0) + qty;
+  data.history.push({ type:'in', product, qty, date, note, id: Date.now() });
+  save(); renderStock(); renderHistory();
+  showToast(`✅ ${product} ${qty}個 入庫しました`);
+  document.getElementById('receive-product').value = '';
+  document.getElementById('receive-qty').value     = '1';
+  document.getElementById('receive-note').value    = '';
+}
+
+// ── QRコード ──
+// QRにはGitHub Pages上のURLを使用。
+// ページURLの末尾に ?p=商品&l=病院 を付与。
+function getPageBase() {
+  // GitHub Pagesでは location.href がそのまま使える
+  const url = window.location.href.split('?')[0].split('#')[0];
+  return url;
+}
+function buildQRUrl(product, location) {
+  return getPageBase() + '?p=' + encodeURIComponent(product) + '&l=' + encodeURIComponent(location);
+}
+
+function openQRModal() {
+  const grid = document.getElementById('qr-grid');
+  grid.innerHTML = '';
+  PRODUCTS.forEach(product => {
+    const section = document.createElement('div');
+    section.innerHTML = `<div class="qr-section-title">${product}</div>`;
+    const row = document.createElement('div');
+    row.className = 'qr-row';
+    LOCATIONS.forEach(loc => {
+      const item = document.createElement('div');
+      item.className = 'qr-item';
+      const boxId = 'qr_' + product + '_' + loc;
+      item.innerHTML = `<div class="qr-loc">${loc}</div><div class="qr-box" id="${boxId}"></div>`;
+      row.appendChild(item);
+      section.appendChild(row);
+      grid.appendChild(section);
+      const url = buildQRUrl(product, loc);
+      setTimeout(() => {
+        const el = document.getElementById(boxId);
+        if (el) new QRCode(el, { text: url, width: 88, height: 88, colorDark:'#1a1a1a', colorLight:'#ffffff', correctLevel: QRCode.CorrectLevel.M });
+      }, 0);
+    });
+  });
+  document.getElementById('qr-modal').classList.add('open');
+}
+function closeQRModal() {
+  document.getElementById('qr-modal').classList.remove('open');
+}
+
+// URLパラメータから自動入力
+function applyURLParams() {
+  const params = new URLSearchParams(window.location.search);
+  const p = params.get('p');
+  const l = params.get('l');
+  if (!p || !l) return;
+  switchTab('sell');
+  document.getElementById('sell-product').value  = p;
+  document.getElementById('sell-location').value = l;
+  document.getElementById('sell-date').value     = today();
+  document.getElementById('autofill-notice').style.display = 'block';
+  // 患者名欄にフォーカス
+  setTimeout(() => document.getElementById('sell-patient').focus(), 300);
+  showToast('📱 ' + p + '・' + l + ' を自動入力しました');
+  history.replaceState({}, '', window.location.pathname);
+}
+
+// ── Excel出力 ──
+function exportExcel() {
+  if (typeof XLSX === 'undefined') { showToast('ライブラリ読み込み中...'); return; }
+  const wb = XLSX.utils.book_new();
+  PRODUCTS.forEach(product => {
+    const sells = data.history.filter(i => i.type==='out' && i.product===product).sort((a,b)=>a.id-b.id);
+    const snapshots = {};
+    let running = 0;
+    [...data.history].filter(i=>i.product===product).sort((a,b)=>a.id-b.id).forEach(i => {
+      running += i.type==='in' ? i.qty : -i.qty;
+      if (i.type==='out') snapshots[i.id] = running;
+    });
+    const rows = [['購入日','お客様名','病院名','購入枚数','現在の枚数']];
+    sells.forEach(i => rows.push([i.date, i.patient, i.location, i.qty, snapshots[i.id]??'']));
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{wch:12},{wch:16},{wch:12},{wch:10},{wch:12}];
+    XLSX.utils.book_append_sheet(wb, ws, product);
+  });
+  XLSX.writeFile(wb, '在庫履歴_' + today().replace(/-/g,'') + '.xlsx');
+  showToast('📥 Excelを出力しました');
+}
+
+// ── タブ切替 ──
+function switchTab(name) {
+  ['stock','sell','receive','history'].forEach(t => {
+    document.getElementById('tab-'+t).style.display = t===name?'block':'none';
+  });
+  document.querySelectorAll('.tab').forEach((el,i) => {
+    el.classList.toggle('active', ['stock','sell','receive','history'][i]===name);
+  });
+}
+
+function today() { return new Date().toISOString().slice(0,10); }
+
+// ── 起動 ──
+document.getElementById('sell-date').value    = today();
+document.getElementById('receive-date').value = today();
+load();
+applyURLParams();
+</script>
+</body>
+</html>
