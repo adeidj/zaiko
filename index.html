@@ -16,7 +16,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
 .tabs { display: flex; gap: 4px; background: #e8e8e8; padding: 4px; border-radius: 10px; margin-bottom: 16px; }
 .tab { flex: 1; padding: 8px 4px; text-align: center; font-size: 12px; border-radius: 7px; cursor: pointer; border: none; background: transparent; color: #666; font-family: inherit; transition: all 0.15s; }
 .tab.active { background: #fff; color: #1a1a1a; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-.stock-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 16px; }
+.stock-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(76px,1fr)); gap: 8px; margin-bottom: 16px; }
 .stock-card { background: #fff; border-radius: 10px; padding: 12px 8px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
 .stock-card .name { font-size: 11px; color: #888; margin-bottom: 4px; }
 .stock-card .count { font-size: 26px; font-weight: 700; color: #1a1a1a; }
@@ -65,6 +65,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
 .modal-sub { font-size: 12px; color: #888; margin-bottom: 14px; }
 .qr-section-title { font-size: 12px; font-weight: 700; color: #888; margin: 14px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; border-top: 1px solid #f0f0f0; padding-top: 14px; }
 .qr-section-title:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+.qr-page { border: 1px solid #eee; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+.qr-page:last-child { margin-bottom: 0; }
+.qr-page-title { font-size: 15px; font-weight: 700; color: #1a1a1a; margin-bottom: 10px; }
 .qr-row { display: flex; flex-wrap: wrap; gap: 10px; }
 .qr-item { border: 1.5px solid #eee; border-radius: 10px; padding: 10px 8px; text-align: center; width: 108px; }
 .qr-item .qr-loc { font-size: 12px; font-weight: 700; color: #1a1a1a; margin-bottom: 6px; }
@@ -73,12 +76,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
 .print-btn { background: #1a1a1a; color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
 
 @media print {
+  @page { size: 182mm 128mm; margin: 8mm; }
   body * { visibility: hidden; }
   .modal-overlay, .modal-overlay * { visibility: visible; }
   .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: auto; background: none; padding: 0; display: block !important; }
-  .modal { max-height: none; box-shadow: none; border-radius: 0; }
-  .modal-close, .print-btn, .btn-sm { display: none !important; }
-  .qr-row { page-break-inside: avoid; }
+  .modal { max-height: none; box-shadow: none; border-radius: 0; padding: 0; max-width: none; }
+  .modal-header, .modal-sub, .modal-close, .print-btn, .btn-sm { display: none !important; }
+  .qr-page { border: none; border-radius: 0; padding: 0; margin: 0; width: 166mm; height: 112mm; page-break-after: always; break-after: page; box-sizing: border-box; }
+  .qr-page:last-child { page-break-after: auto; break-after: auto; }
+  .qr-page-title { font-size: 18px; margin-bottom: 14px; }
+  .qr-row { page-break-inside: avoid; justify-content: space-between; gap: 8mm; }
+  .qr-item { width: 34mm; padding: 5mm 3mm; border: 1.5px solid #999; border-radius: 4mm; }
+  .qr-item .qr-loc { font-size: 13px; margin-bottom: 8px; }
+  .qr-box canvas, .qr-box img { width: 26mm !important; height: 26mm !important; }
 }
 </style>
 </head>
@@ -93,6 +103,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
     <button class="tab" onclick="switchTab('sell')">➖ 販売</button>
     <button class="tab" onclick="switchTab('receive')">➕ 入庫</button>
     <button class="tab" onclick="switchTab('history')">📋 履歴</button>
+    <button class="tab" onclick="switchTab('locations')">🏥 病院</button>
   </div>
 
   <!-- 在庫 -->
@@ -113,7 +124,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
         <label>商品 *</label>
         <select id="sell-product">
           <option value="">選択してください</option>
-          <option>PR41</option><option>PR48</option><option>PR536</option><option>乾燥剤</option>
+          <option>PR41</option><option>PR44</option><option>PR48</option><option>PR536</option><option>乾燥剤</option>
         </select>
       </div>
       <div class="form-row-2">
@@ -130,8 +141,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
         <label>病院 *</label>
         <select id="sell-location">
           <option value="">選択してください</option>
-          <option>あかいけ</option><option>かおる</option><option>元八事</option>
-          <option>淑徳</option><option>相談会</option><option>自宅</option>
         </select>
       </div>
       <div class="form-row">
@@ -150,7 +159,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
         <label>商品 *</label>
         <select id="receive-product">
           <option value="">選択してください</option>
-          <option>PR41</option><option>PR48</option><option>PR536</option><option>乾燥剤</option>
+          <option>PR41</option><option>PR44</option><option>PR48</option><option>PR536</option><option>乾燥剤</option>
         </select>
       </div>
       <div class="form-row-2">
@@ -181,13 +190,27 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
       </select>
       <select id="filter-product" onchange="renderHistory()">
         <option value="">全商品</option>
-        <option>PR41</option><option>PR48</option><option>PR536</option><option>乾燥剤</option>
+        <option>PR41</option><option>PR44</option><option>PR48</option><option>PR536</option><option>乾燥剤</option>
       </select>
     </div>
     <div class="action-row">
       <button class="btn-sm btn-excel" onclick="exportExcel()">📥 Excel出力</button>
     </div>
     <div class="history-list" id="history-list"></div>
+  </div>
+
+  <!-- 病院管理 -->
+  <div id="tab-locations" style="display:none;">
+    <div class="form-card">
+      <p class="section-title" style="margin-bottom:12px;">病院を追加</p>
+      <div class="form-row" style="margin-bottom:10px;">
+        <label>病院名 *</label>
+        <input type="text" id="new-location-name" placeholder="例：中央病院">
+      </div>
+      <button class="btn btn-dark" onclick="addLocation()">追加する</button>
+    </div>
+    <p class="section-title">登録済みの病院</p>
+    <div class="history-list" id="location-list"></div>
   </div>
 </div>
 
@@ -209,11 +232,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
 <div class="toast" id="toast"></div>
 
 <script>
-const PRODUCTS  = ['PR41','PR48','PR536','乾燥剤'];
-const LOCATIONS = ['あかいけ','かおる','元八事','淑徳','相談会','自宅'];
+const PRODUCTS = ['PR41','PR44','PR48','PR536','乾燥剤'];
+const DEFAULT_LOCATIONS = ['あかいけ','かおる','元八事','淑徳','相談会','自宅'];
 const STORE_KEY = 'inv_v2';
 
-let data = { stock: {PR41:0,PR48:0,PR536:0,'乾燥剤':0}, history: [] };
+let data = { stock: {PR41:0,PR44:0,PR48:0,PR536:0,'乾燥剤':0}, history: [], locations: [...DEFAULT_LOCATIONS] };
 
 // ── データ保存・読込 ──
 function save() {
@@ -225,7 +248,10 @@ function load() {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) data = JSON.parse(raw);
   } catch(e){}
-  renderStock(); renderHistory();
+  if (!Array.isArray(data.locations) || !data.locations.length) data.locations = [...DEFAULT_LOCATIONS];
+  if (!data.stock) data.stock = {};
+  PRODUCTS.forEach(p => { if (typeof data.stock[p] !== 'number') data.stock[p] = 0; });
+  renderStock(); renderHistory(); renderLocationSelect(); renderLocationList();
   document.getElementById('sync-status').textContent = '読み込み完了';
 }
 
@@ -261,6 +287,39 @@ function renderHistory() {
       </div>
     </div>`;
   }).join('');
+}
+
+function renderLocationSelect() {
+  const sel = document.getElementById('sell-location');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">選択してください</option>' +
+    data.locations.map(l => `<option>${l}</option>`).join('');
+  if (data.locations.includes(current)) sel.value = current;
+}
+function renderLocationList() {
+  const list = document.getElementById('location-list');
+  if (!data.locations.length) { list.innerHTML = '<div class="empty-msg">病院が登録されていません</div>'; return; }
+  list.innerHTML = data.locations.map(l => `
+    <div class="history-item">
+      <div class="left"><div class="name">${l}</div></div>
+      <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;" onclick="removeLocation('${l.replace(/'/g,"\\'")}')">削除</button>
+    </div>`).join('');
+}
+function addLocation() {
+  const input = document.getElementById('new-location-name');
+  const name = input.value.trim();
+  if (!name) { showToast('病院名を入力してください'); return; }
+  if (data.locations.includes(name)) { showToast('すでに登録されています'); return; }
+  data.locations.push(name);
+  save(); renderLocationSelect(); renderLocationList();
+  input.value = '';
+  showToast(`✅ ${name} を追加しました`);
+}
+function removeLocation(name) {
+  if (!confirm(`「${name}」を削除しますか？`)) return;
+  data.locations = data.locations.filter(l => l !== name);
+  save(); renderLocationSelect(); renderLocationList();
+  showToast(`🗑️ ${name} を削除しました`);
 }
 
 function showToast(msg) {
@@ -310,39 +369,43 @@ function recordReceive() {
 }
 
 // ── QRコード ──
-// QRにはGitHub Pages上のURLを使用。
-// ページURLの末尾に ?p=商品&l=病院 を付与。
+// QRにはGitHub Pages上の正しいURLを常に使用する（file://や旧ファイル名でQRを
+// 作ってしまい、スマホで開けなくなる事故を防ぐため固定URLにしている）。
+const SITE_BASE_URL = 'https://adeidj.github.io/zaiko/';
 function getPageBase() {
-  // GitHub Pagesでは location.href がそのまま使える
-  const url = window.location.href.split('?')[0].split('#')[0];
-  return url;
+  return SITE_BASE_URL;
 }
 function buildQRUrl(product, location) {
   return getPageBase() + '?p=' + encodeURIComponent(product) + '&l=' + encodeURIComponent(location);
 }
 
+const PRODUCT_COLORS = { 'PR41':'#8B5E3C', 'PR44':'#2D6FE0', 'PR48':'#F5871F', 'PR536':'#F2C94C', '乾燥剤':'#1a1a1a' };
+
 function openQRModal() {
   const grid = document.getElementById('qr-grid');
   grid.innerHTML = '';
-  PRODUCTS.forEach(product => {
-    const section = document.createElement('div');
-    section.innerHTML = `<div class="qr-section-title">${product}</div>`;
+  data.locations.forEach(loc => {
+    const page = document.createElement('div');
+    page.className = 'qr-page';
+    page.innerHTML = `<div class="qr-page-title">${loc}</div>`;
     const row = document.createElement('div');
     row.className = 'qr-row';
-    LOCATIONS.forEach(loc => {
+    PRODUCTS.forEach(product => {
       const item = document.createElement('div');
       item.className = 'qr-item';
+      item.style.borderColor = PRODUCT_COLORS[product] || '#eee';
+      item.style.borderWidth = '2.5px';
       const boxId = 'qr_' + product + '_' + loc;
-      item.innerHTML = `<div class="qr-loc">${loc}</div><div class="qr-box" id="${boxId}"></div>`;
+      item.innerHTML = `<div class="qr-loc" style="color:${PRODUCT_COLORS[product] || '#1a1a1a'}">${product}</div><div class="qr-box" id="${boxId}"></div>`;
       row.appendChild(item);
-      section.appendChild(row);
-      grid.appendChild(section);
       const url = buildQRUrl(product, loc);
       setTimeout(() => {
         const el = document.getElementById(boxId);
         if (el) new QRCode(el, { text: url, width: 88, height: 88, colorDark:'#1a1a1a', colorLight:'#ffffff', correctLevel: QRCode.CorrectLevel.M });
       }, 0);
     });
+    page.appendChild(row);
+    grid.appendChild(page);
   });
   document.getElementById('qr-modal').classList.add('open');
 }
@@ -372,17 +435,24 @@ function exportExcel() {
   if (typeof XLSX === 'undefined') { showToast('ライブラリ読み込み中...'); return; }
   const wb = XLSX.utils.book_new();
   PRODUCTS.forEach(product => {
-    const sells = data.history.filter(i => i.type==='out' && i.product===product).sort((a,b)=>a.id-b.id);
-    const snapshots = {};
+    const items = [...data.history].filter(i => i.product===product).sort((a,b)=>a.id-b.id);
     let running = 0;
-    [...data.history].filter(i=>i.product===product).sort((a,b)=>a.id-b.id).forEach(i => {
-      running += i.type==='in' ? i.qty : -i.qty;
-      if (i.type==='out') snapshots[i.id] = running;
+    const rows = [['日付','区分','数量','病院名','お客様名','メモ','現在の枚数']];
+    items.forEach(i => {
+      const isIn = i.type === 'in';
+      running += isIn ? i.qty : -i.qty;
+      rows.push([
+        i.date,
+        isIn ? '入庫' : '販売',
+        isIn ? i.qty : -i.qty,
+        isIn ? '' : (i.location||''),
+        isIn ? '' : (i.patient||''),
+        isIn ? (i.note||'') : '',
+        running
+      ]);
     });
-    const rows = [['購入日','お客様名','病院名','購入枚数','現在の枚数']];
-    sells.forEach(i => rows.push([i.date, i.patient, i.location, i.qty, snapshots[i.id]??'']));
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{wch:12},{wch:16},{wch:12},{wch:10},{wch:12}];
+    ws['!cols'] = [{wch:12},{wch:8},{wch:8},{wch:12},{wch:16},{wch:20},{wch:12}];
     XLSX.utils.book_append_sheet(wb, ws, product);
   });
   XLSX.writeFile(wb, '在庫履歴_' + today().replace(/-/g,'') + '.xlsx');
@@ -391,11 +461,12 @@ function exportExcel() {
 
 // ── タブ切替 ──
 function switchTab(name) {
-  ['stock','sell','receive','history'].forEach(t => {
+  const tabs = ['stock','sell','receive','history','locations'];
+  tabs.forEach(t => {
     document.getElementById('tab-'+t).style.display = t===name?'block':'none';
   });
   document.querySelectorAll('.tab').forEach((el,i) => {
-    el.classList.toggle('active', ['stock','sell','receive','history'][i]===name);
+    el.classList.toggle('active', tabs[i]===name);
   });
 }
 
