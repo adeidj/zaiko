@@ -6,6 +6,8 @@
 <title>在庫管理</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #f5f5f5; color: #1a1a1a; }
@@ -238,21 +240,67 @@ const STORE_KEY = 'inv_v2';
 
 let data = { stock: {PR41:0,PR44:0,PR48:0,PR536:0,'乾燥剤':0}, history: [], locations: [...DEFAULT_LOCATIONS] };
 
+// ── Firebase（スマホ・PC間のリアルタイム連携） ──
+const firebaseConfig = {
+  apiKey: "AIzaSyDVeaYF0F1CtvlixzuxM62c6QuqQ7U6y9M",
+  authDomain: "gairai-f092e.firebaseapp.com",
+  projectId: "gairai-f092e",
+  storageBucket: "gairai-f092e.firebasestorage.app",
+  messagingSenderId: "808398612924",
+  appId: "1:808398612924:web:32ed8e9d7a3e35f01aa3b9",
+  measurementId: "G-J8ZFY7Q4NM"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const DOC_REF = db.collection('zaiko').doc('main');
+
 // ── データ保存・読込 ──
+let isApplyingRemote = false;
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){}
-  document.getElementById('sync-status').textContent = '保存済み ' + new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+  if (isApplyingRemote) return; // リモートから来た変更を再送しない
+  document.getElementById('sync-status').textContent = '保存中...';
+  DOC_REF.set(data)
+    .then(() => { document.getElementById('sync-status').textContent = '同期済み ' + new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}); })
+    .catch(err => { console.error(err); document.getElementById('sync-status').textContent = '⚠️ 同期失敗（未接続）'; });
+}
+function ensureDataShape() {
+  if (!Array.isArray(data.locations) || !data.locations.length) data.locations = [...DEFAULT_LOCATIONS];
+  if (!data.stock) data.stock = {};
+  PRODUCTS.forEach(p => { if (typeof data.stock[p] !== 'number') data.stock[p] = 0; });
+  if (!Array.isArray(data.history)) data.history = [];
+}
+function renderAll() {
+  renderStock(); renderHistory(); renderLocationSelect(); renderLocationList();
 }
 function load() {
+  // まずローカルの保存内容ですぐ表示（オフライン時の保険）
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) data = JSON.parse(raw);
   } catch(e){}
-  if (!Array.isArray(data.locations) || !data.locations.length) data.locations = [...DEFAULT_LOCATIONS];
-  if (!data.stock) data.stock = {};
-  PRODUCTS.forEach(p => { if (typeof data.stock[p] !== 'number') data.stock[p] = 0; });
-  renderStock(); renderHistory(); renderLocationSelect(); renderLocationList();
-  document.getElementById('sync-status').textContent = '読み込み完了';
+  ensureDataShape();
+  renderAll();
+  document.getElementById('sync-status').textContent = '接続中...';
+
+  // Firestoreとリアルタイム同期（他端末の変更も自動反映）
+  DOC_REF.onSnapshot(snap => {
+    if (snap.exists) {
+      isApplyingRemote = true;
+      data = snap.data();
+      ensureDataShape();
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){}
+      renderAll();
+      isApplyingRemote = false;
+      document.getElementById('sync-status').textContent = '同期済み ' + new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+    } else {
+      // 初回のみ：今の内容をクラウドにアップロード
+      DOC_REF.set(data);
+    }
+  }, err => {
+    console.error(err);
+    document.getElementById('sync-status').textContent = '⚠️ オフライン（この端末のみ）';
+  });
 }
 
 // ── 描画 ──
