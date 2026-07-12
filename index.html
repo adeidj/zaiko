@@ -81,8 +81,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
   @page { size: 182mm 128mm; margin: 8mm; }
   body * { visibility: hidden; }
   .modal-overlay, .modal-overlay * { visibility: visible; }
-  .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: auto; background: none; padding: 0; display: block !important; }
-  .modal { max-height: none; box-shadow: none; border-radius: 0; padding: 0; max-width: none; }
+  .modal-overlay { position: static; inset: auto; top: auto; left: auto; right: auto; bottom: auto; width: auto; height: auto; background: none; padding: 0; display: block !important; }
+  .modal { position: static; max-height: none; overflow: visible; box-shadow: none; border-radius: 0; padding: 0; max-width: none; width: auto; }
   .modal-header, .modal-sub, .modal-close, .print-btn, .btn-sm { display: none !important; }
   .qr-page { border: none; border-radius: 0; padding: 0; margin: 0; width: 166mm; height: 112mm; page-break-after: always; break-after: page; box-sizing: border-box; }
   .qr-page:last-child { page-break-after: auto; break-after: auto; }
@@ -282,6 +282,7 @@ function load() {
   ensureDataShape();
   renderAll();
   document.getElementById('sync-status').textContent = '接続中...';
+  applyURLParams();
 
   // Firestoreとリアルタイム同期（他端末の変更も自動反映）
   DOC_REF.onSnapshot(snap => {
@@ -292,6 +293,7 @@ function load() {
       try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){}
       renderAll();
       isApplyingRemote = false;
+      applyURLParams();
       document.getElementById('sync-status').textContent = '同期済み ' + new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
     } else {
       // 初回のみ：今の内容をクラウドにアップロード
@@ -467,6 +469,8 @@ function applyURLParams() {
   const p = params.get('p');
   const l = params.get('l');
   if (!p || !l) return;
+  if (!PRODUCTS.includes(p)) return;
+  if (!data.locations.includes(l)) return; // 病院リストがまだ届いていない場合は後で再試行
   switchTab('sell');
   document.getElementById('sell-product').value  = p;
   document.getElementById('sell-location').value = l;
@@ -524,7 +528,6 @@ function today() { return new Date().toISOString().slice(0,10); }
 document.getElementById('sell-date').value    = today();
 document.getElementById('receive-date').value = today();
 load();
-applyURLParams();
 </script>
 </body>
 </html>
