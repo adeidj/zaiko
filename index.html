@@ -78,19 +78,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
 .print-btn { background: #1a1a1a; color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
 
 @media print {
-  @page { size: 182mm 128mm; margin: 8mm; }
+  @page { size: 148mm 105mm; margin: 6mm; }
   body * { visibility: hidden; }
   .modal-overlay, .modal-overlay * { visibility: visible; }
   .modal-overlay { position: static; inset: auto; top: auto; left: auto; right: auto; bottom: auto; width: auto; height: auto; background: none; padding: 0; display: block !important; }
   .modal { position: static; max-height: none; overflow: visible; box-shadow: none; border-radius: 0; padding: 0; max-width: none; width: auto; }
-  .modal-header, .modal-sub, .modal-close, .print-btn, .btn-sm { display: none !important; }
-  .qr-page { border: none; border-radius: 0; padding: 0; margin: 0; width: 166mm; height: 112mm; page-break-after: always; break-after: page; box-sizing: border-box; }
+  .modal-header, .modal-sub, .modal-close, .print-btn, .print-btn-wrap, .btn-sm { display: none !important; }
+  .qr-page { border: none; border-radius: 0; padding: 0; margin: 0; width: 136mm; height: 93mm; page-break-after: always; break-after: page; box-sizing: border-box; overflow: hidden; }
   .qr-page:last-child { page-break-after: auto; break-after: auto; }
-  .qr-page-title { font-size: 18px; margin-bottom: 14px; }
-  .qr-row { page-break-inside: avoid; justify-content: space-between; gap: 8mm; }
-  .qr-item { width: 34mm; padding: 5mm 3mm; border: 1.5px solid #999; border-radius: 4mm; }
-  .qr-item .qr-loc { font-size: 13px; margin-bottom: 8px; }
-  .qr-box canvas, .qr-box img { width: 26mm !important; height: 26mm !important; }
+  .qr-page-title { font-size: 14px; margin-bottom: 8px; }
+  .qr-row { page-break-inside: avoid; justify-content: space-between; gap: 3mm; flex-wrap: nowrap; }
+  .qr-item { width: 24mm; padding: 2mm 1.5mm; border: 1.2px solid #999; border-radius: 2.5mm; flex-shrink: 0; }
+  .qr-item .qr-loc { font-size: 9px; margin-bottom: 3px; }
+  .qr-box canvas, .qr-box img { width: 17mm !important; height: 17mm !important; }
 }
 </style>
 </head>
@@ -224,7 +224,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-ser
       <button class="modal-close" onclick="closeQRModal()">✕</button>
     </div>
     <p class="modal-sub">読み取ると商品・病院が自動入力されます。患者名と枚数だけ入力してください。</p>
-    <div style="margin-bottom:14px;">
+    <div class="print-btn-wrap" style="margin-bottom:14px;">
       <button class="print-btn" onclick="window.print()">🖨️ 印刷する</button>
     </div>
     <div id="qr-grid"></div>
@@ -334,9 +334,26 @@ function renderHistory() {
       <div class="right">
         <div class="qty ${out?'out':'in'}">${out?'-':'+'}${i.qty}</div>
         <div class="date">${i.date}</div>
+        <button class="btn-sm" style="margin-top:6px;background:#FCEBEB;color:#A32D2D;" onclick="deleteHistoryItem(${i.id})">削除</button>
       </div>
     </div>`;
   }).join('');
+}
+
+function deleteHistoryItem(id) {
+  const item = data.history.find(i => i.id === id);
+  if (!item) return;
+  const label = `${item.date}　${item.product}　${item.type==='out'?'-':'+'}${item.qty}`;
+  if (!confirm(`この記録を削除しますか？\n${label}\n（削除すると在庫数も自動で調整されます）`)) return;
+  // 在庫を記録前の状態に戻す
+  if (item.type === 'out') {
+    data.stock[item.product] = (data.stock[item.product]||0) + item.qty;
+  } else {
+    data.stock[item.product] = (data.stock[item.product]||0) - item.qty;
+  }
+  data.history = data.history.filter(i => i.id !== id);
+  save(); renderStock(); renderHistory();
+  showToast('🗑️ 記録を削除しました');
 }
 
 function renderLocationSelect() {
@@ -390,7 +407,6 @@ function recordSell() {
   if (!date)     { showToast('販売日を入力してください'); return; }
   if (!location) { showToast('病院を選択してください'); return; }
   if (!patient)  { showToast('患者名を入力してください'); return; }
-  if ((data.stock[product]||0) < qty) { showToast('在庫が不足しています'); return; }
   data.stock[product] = (data.stock[product]||0) - qty;
   data.history.push({ type:'out', product, qty, date, location, patient, id: Date.now() });
   save(); renderStock(); renderHistory();
