@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>在庫管理</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -499,17 +499,25 @@ function applyURLParams() {
 }
 
 // ── Excel出力 ──
-function exportExcel() {
-  if (typeof XLSX === 'undefined') { showToast('ライブラリ読み込み中...'); return; }
-  const wb = XLSX.utils.book_new();
+async function exportExcel() {
+  if (typeof ExcelJS === 'undefined') { showToast('ライブラリ読み込み中...'); return; }
+  const wb = new ExcelJS.Workbook();
+  const IN_FILL  = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFBBDEFB' } }; // 入庫＝青
+  const OUT_FILL = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFFCC99' } }; // 販売＝オレンジ
   PRODUCTS.forEach(product => {
+    const ws = wb.addWorksheet(product);
+    ws.columns = [
+      { header:'日付', width:12 }, { header:'区分', width:8 }, { header:'数量', width:8 },
+      { header:'病院名', width:14 }, { header:'お客様名', width:16 },
+      { header:'メモ', width:20 }, { header:'現在の枚数', width:12 }
+    ];
+    ws.getRow(1).font = { bold: true };
     const items = [...data.history].filter(i => i.product===product).sort((a,b)=>a.id-b.id);
     let running = 0;
-    const rows = [['日付','区分','数量','病院名','お客様名','メモ','現在の枚数']];
     items.forEach(i => {
       const isIn = i.type === 'in';
       running += isIn ? i.qty : -i.qty;
-      rows.push([
+      const row = ws.addRow([
         i.date,
         isIn ? '入庫' : '販売',
         isIn ? i.qty : -i.qty,
@@ -518,12 +526,17 @@ function exportExcel() {
         isIn ? (i.note||'') : '',
         running
       ]);
+      row.eachCell({ includeEmpty:true }, cell => { cell.fill = isIn ? IN_FILL : OUT_FILL; });
     });
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{wch:12},{wch:8},{wch:8},{wch:12},{wch:16},{wch:20},{wch:12}];
-    XLSX.utils.book_append_sheet(wb, ws, product);
   });
-  XLSX.writeFile(wb, '在庫履歴_' + today().replace(/-/g,'') + '.xlsx');
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '在庫履歴_' + today().replace(/-/g,'') + '.xlsx';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
   showToast('📥 Excelを出力しました');
 }
 
